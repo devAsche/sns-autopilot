@@ -102,10 +102,20 @@ def human_click(locator) -> None:
 # ---------- X ----------
 
 X_FIND_CARD_JS = r"""
-(tid) => Array.from(document.querySelectorAll('article[data-testid="tweet"]')).findIndex(a => {
-  const t = a.querySelector('time'); const l = t ? t.closest('a') : null;
-  return !!l && new RegExp('/status/' + tid + '(?:$|[/?#])').test(l.getAttribute('href') || '');
-})
+(tid) => {
+  // 引用ポストがあると、カード内で最初の time は引用元のものになる。
+  // カード内のすべての time を見て、引用の枠(div[role="link"])の外にある、そのポスト自身の時刻リンクで照合する。
+  const re = new RegExp('/status/' + tid + '(?:$|[/?#])');
+  const arts = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
+  const own = arts.findIndex(a => Array.from(a.querySelectorAll('time')).some(t => {
+    const l = t.closest('a');
+    return !!l && re.test(l.getAttribute('href') || '') && !t.closest('div[role="link"]');
+  }));
+  if (own >= 0) return own;
+  return arts.findIndex(a => Array.from(a.querySelectorAll('time')).some(t => {
+    const l = t.closest('a'); return !!l && re.test(l.getAttribute('href') || '') && !t.closest('div[role="link"]') ;
+  }) || (a.querySelector('a[href*="/status/' + tid + '"]') && !a.querySelector('div[role="link"] a[href*="/status/' + tid + '"]')));
+}
 """
 
 X_PROFILE_BTN_JS = r"""
@@ -362,7 +372,7 @@ def enqueue(job_path: str) -> None:
                 continue
             queue.append({"id": a["id"], "account": a["account"], "action": a["action"], "url": a["url"],
                           "job": res["id"], "approved_at": job.get("created_at"), "added": now().isoformat(timespec="minutes"),
-                          "attempts": 0})
+                          "attempts": 0, **({"retry": True} if a.get("retry") is True else {})})
             known.add(a["id"])
             added += 1
         write_json(QUEUE_STATE, queue)
@@ -486,7 +496,8 @@ def drain(dry: bool, max_minutes: int) -> dict:
                 acct, page = s["acct"], s["page"]
                 key = history_key(acct_id, item["action"], item["url"])
                 # unsupported(ボタンが見つからない等、こちらの道具側の失敗)は済んだ扱いにせず、やり直せるようにする
-                if key in history and history[key].get("result") != "unsupported" and not dry:
+                # retry: true は、道具側の不具合で失敗した分を本人承認のうえ入れ直したもの。実行済みの記録より優先する
+                if key in history and history[key].get("result") != "unsupported" and not item.get("retry") and not dry:
                     kind, detail = "already", "実行済みの記録あり"
                 else:
                     try:

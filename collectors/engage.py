@@ -27,7 +27,7 @@ SOURCE_WEIGHT = {"notif": 3.0, "seed": 2.0, "keyword": 1.5, "home": 1.0}
 
 X_TWEETS_JS = r"""
 () => Array.from(document.querySelectorAll('article[data-testid="tweet"]')).map(a => {
-  const t = a.querySelector('time');
+  const t = Array.from(a.querySelectorAll('time')).find(x => !x.closest('div[role="link"]')) || a.querySelector('time');
   const link = t ? t.closest('a') : null;
   const textEl = a.querySelector('div[data-testid="tweetText"]');
   const nameEl = a.querySelector('div[data-testid="User-Name"]');
@@ -66,7 +66,7 @@ X_NOTIF_JS = r"""
 () => Array.from(document.querySelectorAll('[data-testid="cellInnerDiv"]')).map(c => {
   const tw = c.querySelector('article[data-testid="tweet"]');
   if (tw) {
-    const t = tw.querySelector('time'); const link = t ? t.closest('a') : null;
+    const t = Array.from(tw.querySelectorAll('time')).find(x => !x.closest('div[role="link"]')) || tw.querySelector('time'); const link = t ? t.closest('a') : null;
     const textEl = tw.querySelector('div[data-testid="tweetText"]');
     return {kind: 'tweet', url: link ? link.href : null, created_at: t ? t.getAttribute('datetime') : null,
             text: textEl ? textEl.innerText : '', liked: !!tw.querySelector('[data-testid="unlike"]')};
