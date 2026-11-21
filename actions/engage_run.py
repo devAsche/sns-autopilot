@@ -11,7 +11,7 @@
 守っていること:
   - 承認済み(approved_by_user: true)の作業指示から入った操作しか実行しない
   - ログイン中のアカウントが設定と違えば、そのアカウントは何もしない
-  - 1日の上限(config/engage.yaml の caps)と、人の操作に近い間隔・休憩・1時間あたりの上限(pacing)を守る。上限を超えた分は翌日に回る
+  - 1日の上限(config/engage.yaml の caps)と、config の pacing の間隔を守る。上限を超えた分は翌日に回る
   - 制限・確認画面・ログアウトを見つけたら、そのアカウントを stop_hours_on_block 時間止め、mailbox/sns/to_claude に知らせる
   - 結果のわからない操作は、念のため回数に数え、同じ相手には二度試さない
 
@@ -374,9 +374,10 @@ def drain(dry: bool, max_minutes: int) -> dict:
     pacing = cfg.get("pacing", {})
     gaps = pacing.get("gap_s") or {}
     default_gap = (pacing.get("min_gap_s", 45), pacing.get("max_gap_s", 120))
-    brk_every = pacing.get("break_every", [8, 14])
-    brk_len = pacing.get("break_s", [240, 600])
-    per_hour = int(pacing.get("per_hour_max", 15))
+    brk_every = pacing.get("break_every")            # null なら休憩しない
+    brk_len = pacing.get("break_s") or [240, 600]
+    per_hour = int(pacing.get("per_hour_max") or 0)   # 0 なら上限なし
+    split = bool(pacing.get("split_across_runs", False))
     global DWELL
     DWELL = tuple(pacing.get("dwell_s", DWELL))
     stop_h = pacing.get("stop_hours_on_block", 48)
@@ -409,7 +410,7 @@ def drain(dry: bool, max_minutes: int) -> dict:
         allowance[acct_id] = {}
         for action in ACTIONS[acct["platform"]]:
             remain = max(0, cap_for(cfg, acct, action) - used(acct_id, action))
-            allowance[acct_id][action] = remain if dry else math.ceil(remain / left)
+            allowance[acct_id][action] = math.ceil(remain / left) if (split and not dry) else remain
         random.shuffle(items)
 
     deadline = time.time() + max_minutes * 60
@@ -436,7 +437,7 @@ def drain(dry: bool, max_minutes: int) -> dict:
                     plan.pop(acct_id)
                     continue
                 sessions[acct_id] = {"browser": browser, "page": page, "acct": acct, "next": time.time(),
-                                     "done_times": [], "until_break": random.randint(*brk_every)}
+                                     "done_times": [], "until_break": random.randint(*brk_every) if brk_every else 10**9}
             except Exception as e:
                 summary["accounts"][acct_id].update(status="connect_error")
                 summary["accounts"][acct_id]["notes"] += steps + [f"{type(e).__name__}: {str(e)[:300]}"]
@@ -499,10 +500,10 @@ def drain(dry: bool, max_minutes: int) -> dict:
                 if kind not in ("already",):
                     s["done_times"] = [x for x in s["done_times"] if x > t - 3600] + [t]
                     s["until_break"] -= 1
-                if s["until_break"] <= 0:
+                if brk_every and s["until_break"] <= 0:
                     nxt = t + random.uniform(*brk_len)
                     s["until_break"] = random.randint(*brk_every)
-                if len(s["done_times"]) >= per_hour:
+                if per_hour and len(s["done_times"]) >= per_hour:
                     nxt = max(nxt, s["done_times"][-per_hour] + 3600 + random.uniform(30, 180))
                 s["next"] = nxt
             if sessions and time.time() >= deadline:
