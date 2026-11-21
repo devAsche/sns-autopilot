@@ -11,7 +11,7 @@
 守っていること:
   - 承認済み(approved_by_user: true)の作業指示から入った操作しか実行しない
   - ログイン中のアカウントが設定と違えば、そのアカウントは何もしない
-  - 1日の上限(config/engage.yaml の caps)と、同じアカウントでの間隔(pacing)を守る。上限を超えた分は翌日に回る
+  - 1日の上限(config/engage.yaml の caps)と、人の操作に近い間隔・休憩・1時間あたりの上限(pacing)を守る。上限を超えた分は翌日に回る
   - 制限・確認画面・ログアウトを見つけたら、そのアカウントを stop_hours_on_block 時間止め、mailbox/sns/to_claude に知らせる
   - 結果のわからない操作は、念のため回数に数え、同じ相手には二度試さない
 
@@ -72,6 +72,33 @@ def _check(page, platform: str) -> None:
         raise Outcome("not_found", "ページが無い・削除済み・凍結")
 
 
+# ---------- 人に近い押し方 ----------
+
+DWELL = (3, 9)
+
+
+def human_dwell(page) -> None:
+    """押す前に、少しスクロールして眺める(開いてすぐ押さない)。"""
+    t_end = time.time() + random.uniform(*DWELL)
+    try:
+        page.mouse.wheel(0, random.randint(150, 500))
+        time.sleep(random.uniform(0.8, 2.0))
+        page.mouse.wheel(0, -random.randint(100, 450))
+    except Exception:
+        pass
+    rest = t_end - time.time()
+    if rest > 0:
+        time.sleep(rest)
+
+
+def human_click(locator) -> None:
+    """ボタンにカーソルを乗せてから、少し間をおいて押す。"""
+    locator.scroll_into_view_if_needed(timeout=5000)
+    locator.hover(timeout=5000)
+    time.sleep(random.uniform(0.3, 1.1))
+    locator.click(delay=random.randint(40, 140))
+
+
 # ---------- X ----------
 
 X_FIND_CARD_JS = r"""
@@ -119,7 +146,8 @@ def x_like(page, url: str, dry: bool) -> str:
         raise Outcome("unsupported", "いいねボタンが見つからない")
     if dry:
         return "dry_run"
-    btn.click()
+    human_dwell(page)
+    human_click(btn)
     try:
         card.locator('[data-testid="unlike"]').first.wait_for(state="visible", timeout=10000)
     except Exception:
@@ -139,7 +167,8 @@ def x_retweet(page, url: str, dry: bool) -> str:
         raise Outcome("unsupported", "リポストボタンが見つからない(鍵垢などでリポストできない可能性)")
     if dry:
         return "dry_run"
-    btn.click()
+    human_dwell(page)
+    human_click(btn)
     confirm = page.locator('[data-testid="retweetConfirm"]').first
     try:
         confirm.wait_for(state="visible", timeout=8000)
@@ -147,7 +176,8 @@ def x_retweet(page, url: str, dry: bool) -> str:
         page.keyboard.press("Escape")
         _check(page, "x")
         raise Outcome("unsupported", "リポストのメニューが出ない")
-    confirm.click()
+    time.sleep(random.uniform(0.5, 1.5))
+    human_click(confirm)
     try:
         card.locator('[data-testid="unretweet"]').first.wait_for(state="visible", timeout=10000)
     except Exception:
@@ -181,7 +211,8 @@ def x_follow(page, url: str, dry: bool) -> str:
         return "already"
     if dry:
         return "dry_run"
-    page.locator(f'[data-testid="primaryColumn"] button[data-testid="{tid}"]').first.click()
+    human_dwell(page)
+    human_click(page.locator(f'[data-testid="primaryColumn"] button[data-testid="{tid}"]').first)
     uid = tid[: -len("-follow")]
     try:
         page.locator(f'button[data-testid="{uid}-unfollow"], button[data-testid="{uid}-cancel"]').first.wait_for(state="visible", timeout=10000)
@@ -233,7 +264,8 @@ def ig_like(page, url: str, dry: bool) -> str:
         raise Outcome("unsupported", "いいねボタンが見つからない")
     if dry:
         return "dry_run"
-    page.locator('[data-engage-target="1"]').first.click()
+    human_dwell(page)
+    human_click(page.locator('[data-engage-target="1"]').first)
     try:
         page.wait_for_function(IG_LIKED_JS, arg=IG_UNLIKE_LABELS, timeout=10000)
     except Exception:
@@ -264,7 +296,8 @@ def ig_follow(page, url: str, dry: bool) -> str:
         raise Outcome("unsupported", "フォローボタンが見つからない")
     if dry:
         return "dry_run"
-    buttons.nth(idx).click()
+    human_dwell(page)
+    human_click(buttons.nth(idx))
     deadline = time.time() + 10
     while time.time() < deadline:
         time.sleep(1)
@@ -339,7 +372,13 @@ def runs_left_today(cfg: dict) -> int:
 def drain(dry: bool, max_minutes: int) -> dict:
     cfg = load_engage_config()
     pacing = cfg.get("pacing", {})
-    gap = (pacing.get("min_gap_s", 45), pacing.get("max_gap_s", 120))
+    gaps = pacing.get("gap_s") or {}
+    default_gap = (pacing.get("min_gap_s", 45), pacing.get("max_gap_s", 120))
+    brk_every = pacing.get("break_every", [8, 14])
+    brk_len = pacing.get("break_s", [240, 600])
+    per_hour = int(pacing.get("per_hour_max", 15))
+    global DWELL
+    DWELL = tuple(pacing.get("dwell_s", DWELL))
     stop_h = pacing.get("stop_hours_on_block", 48)
     queue = read_json(QUEUE_STATE, [])
     expire = (now() - dt.timedelta(days=7)).isoformat()
@@ -396,7 +435,8 @@ def drain(dry: bool, max_minutes: int) -> dict:
                     release(browser)
                     plan.pop(acct_id)
                     continue
-                sessions[acct_id] = {"browser": browser, "page": page, "acct": acct, "next": time.time()}
+                sessions[acct_id] = {"browser": browser, "page": page, "acct": acct, "next": time.time(),
+                                     "done_times": [], "until_break": random.randint(*brk_every)}
             except Exception as e:
                 summary["accounts"][acct_id].update(status="connect_error")
                 summary["accounts"][acct_id]["notes"] += steps + [f"{type(e).__name__}: {str(e)[:300]}"]
@@ -453,7 +493,18 @@ def drain(dry: bool, max_minutes: int) -> dict:
                             "screenshot": evidence, "at": now().isoformat(timespec="minutes")})
                     sessions.pop(acct_id)
                     continue
-                s["next"] = time.time() + random.uniform(*gap)
+                # 次の操作までの間隔: 操作の種類ごとの範囲でランダム。一定回数ごとに休憩し、1時間あたりの上限も守る
+                t = time.time()
+                nxt = t + random.uniform(*(gaps.get(item["action"]) or default_gap))
+                if kind not in ("already",):
+                    s["done_times"] = [x for x in s["done_times"] if x > t - 3600] + [t]
+                    s["until_break"] -= 1
+                if s["until_break"] <= 0:
+                    nxt = t + random.uniform(*brk_len)
+                    s["until_break"] = random.randint(*brk_every)
+                if len(s["done_times"]) >= per_hour:
+                    nxt = max(nxt, s["done_times"][-per_hour] + 3600 + random.uniform(30, 180))
+                s["next"] = nxt
             if sessions and time.time() >= deadline:
                 summary["notes"] = [f"{max_minutes} 分たったので途中で終えた(残りは次回)"]
         finally:

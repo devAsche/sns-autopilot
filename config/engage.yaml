@@ -5,19 +5,31 @@
 # プロファイルの場所: 各アカウントの CDP ポートと起動タスクは tools/engage_probe.py の結果
 # (state/engage_profiles.json)から、handle で自動的に引く。ここに cdp_port / launch_task / user_data_dir を書けばそちらが優先。
 
-# 1アカウント1日あたりの実行上限(本人の回答が無かったため控えめで開始。2026-11-19)
+# 1アカウント1日あたりの実行上限(2026-11-21 本人が指定)
 caps:
-  x:         {follow: 10, like: 30, retweet: 5}
-  instagram: {follow: 8,  like: 25}
+  x:         {follow: 30, like: 50, retweet: 5}
+  instagram: {follow: 20, like: 50}
+
+# 朝のClaudeが承認ページに出す候補の上限(1アカウント・1日あたり。却下される分を見込んだ数。2026-11-21 本人が指定)
+propose:
+  x:         {follow: 45, like: 65, retweet: 8}
+  instagram: {follow: 35, like: 65}
 
 pacing:
-  min_gap_s: 45          # 同じアカウントで次の操作までの最短間隔
-  max_gap_s: 120         # 最長間隔(この間でランダム)
+  # 人がスマホで操作するくらいの速さにする(数値は安全側に寄せた推測。公式の基準ではない)
+  gap_s:                   # 同じアカウントで、次の操作までの間隔(この範囲でランダム)
+    like:    [25, 75]
+    retweet: [40, 120]
+    follow:  [60, 180]
+  dwell_s: [3, 9]          # 投稿やプロフィールを開いてから押すまで、眺めている時間
+  break_every: [8, 14]     # この回数ごとに、そのアカウントは休憩する
+  break_s: [240, 600]      # 休憩の長さ(4〜10分)
+  per_hour_max: 15         # 1アカウントが1時間にする操作の最大数
   run_times: ["12:00", "15:00", "18:00", "21:00"]   # Museが Ops-EngageRun を起動する時刻。1回にできるのは残り上限÷残り回数まで
   stop_hours_on_block: 48  # 制限・確認画面が出たら、そのアカウントを止める時間
 
 collect:
-  max_candidates_per_account: 60   # 朝のClaudeに渡す候補の最大数(トークン節約)
+  max_candidates_per_account: 150  # 朝のClaudeに渡す候補の最大数(承認ページに出す上限の合計を下回らないように 2026-11-21 に60から変更)
   max_post_age_days: 3              # これより古い投稿は候補にしない
 
 accounts:
