@@ -443,9 +443,68 @@ def collect_ig(page, acct: dict, cfg: dict, notes: list) -> list[dict]:
     return out
 
 
+# ---------- 自分のフォロー一覧 ----------
+
+def _following_state(acct_id: str):
+    from lib.common import STATE_DIR
+    return STATE_DIR / f"engage_following_{acct_id}.json"
+
+
+def fetch_following(page, acct: dict, cfg: dict, notes: list) -> set[str]:
+    """自分のフォロー一覧を最後まで読み、フォロー中の相手を候補から外すのに使う。
+    読めなかったときは前回の一覧(state/engage_following_<id>.json)を使う。"""
+    from lib.common import read_json, write_json
+    max_scrolls = int(cfg.get("collect", {}).get("following_max_scrolls", 60))
+    h, got = acct["handle"], set()
+    tag = acct["id"]
+    try:
+        if acct["platform"] == "x":
+            _goto(page, f"https://x.com/{h}/following", "x", notes, f"{tag}_following")
+            page.wait_for_selector('[data-testid="UserCell"]', timeout=15000)
+            still = 0
+            for _ in range(max_scrolls):
+                before = len(got)
+                got |= {c["handle"].lower() for c in page.evaluate(X_USERCELL_JS) if c["handle"]}
+                still = still + 1 if len(got) == before else 0
+                if still >= 3:
+                    break
+                page.mouse.wheel(0, 2500)
+                time.sleep(1.5)
+        else:
+            _goto(page, f"https://www.instagram.com/{h}/", "instagram", notes, f"{tag}_following")
+            link = page.locator(f'a[href="/{h}/following/"]').first
+            link.click()
+            page.wait_for_selector('[role="dialog"]', timeout=15000)
+            time.sleep(2)
+            still = 0
+            for _ in range(max_scrolls):
+                before = len(got)
+                got |= {r["handle"].lower() for r in page.evaluate(IG_DIALOG_USERS_JS)}
+                still = still + 1 if len(got) == before else 0
+                if still >= 3:
+                    break
+                page.evaluate(IG_SCROLL_DIALOG_JS)
+                time.sleep(1.8)
+            page.keyboard.press("Escape")
+            got.discard(h.lower())
+    except _Blocked:
+        raise
+    except Exception as e:
+        notes.append(f"{tag} フォロー一覧: {type(e).__name__}: {str(e)[:120]}")
+        snapshot(page, f"engage_{tag}_following_err")
+    path = _following_state(acct["id"])
+    if got:
+        write_json(path, {"fetched_at": now().isoformat(timespec="minutes"), "handles": sorted(got)})
+        return got
+    prev = read_json(path, {}).get("handles", [])
+    if prev:
+        notes.append(f"{tag} フォロー一覧が読めなかったので前回の一覧({len(prev)}人)を使う")
+    return set(prev)
+
+
 # ---------- まとめ ----------
 
-def finalize(acct: dict, cands: list[dict], cfg: dict, history: dict) -> list[dict]:
+def finalize(acct: dict, cands: list[dict], cfg: dict, history: dict, following: set[str] | None = None) -> list[dict]:
     """重複をまとめ、実行済み・自分・古すぎる・反応済みを除き、出所の重みで並べて上限件数に絞る。"""
     max_age_h = cfg.get("collect", {}).get("max_post_age_days", 3) * 24
     own = acct["handle"].lower()
@@ -464,8 +523,8 @@ def finalize(acct: dict, cands: list[dict], cfg: dict, history: dict) -> list[di
                 continue
             if c.get("liked") and (acct["platform"] == "instagram" or c.get("retweeted")):
                 continue
-        if c["kind"] == "user" and c.get("following"):
-            continue
+        if c["kind"] == "user" and (c.get("following") or (c.get("handle") or "").lower() in (following or set())):
+            continue  # すでにフォローしている相手は候補にしない
         m = merged.get(c["cid"])
         if m:
             if SOURCE_WEIGHT.get(c["source"], 0) > SOURCE_WEIGHT.get(m["source"], 0):
@@ -524,8 +583,10 @@ def run(_ctx, _cfg_unused=None) -> dict:
                     snapshot(page, f"engage_{acct['id']}_mismatch")
                     continue
                 t0 = time.time()
+                following = fetch_following(page, acct, cfg, info["notes"])
+                info["following_count"] = len(following)
                 raw = collect_x(page, acct, cfg, info["notes"]) if acct["platform"] == "x" else collect_ig(page, acct, cfg, info["notes"])
-                got = finalize(acct, raw, cfg, history)
+                got = finalize(acct, raw, cfg, history, following)
                 info["count"] = len(got)
                 info["raw_count"] = len(raw)
                 info["seconds"] = round(time.time() - t0)

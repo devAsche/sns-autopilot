@@ -31,6 +31,7 @@ pacing:
 collect:
   max_candidates_per_account: 150  # 朝のClaudeに渡す候補の最大数(承認ページに出す上限の合計を下回らないように 2026-11-21 に60から変更)
   max_post_age_days: 3              # これより古い投稿は候補にしない
+  following_max_scrolls: 60         # 自分のフォロー一覧を読むときの最大スクロール回数(フォロー中の相手は候補から外す)
 
 accounts:
   - id: sudomix
