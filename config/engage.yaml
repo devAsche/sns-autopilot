@@ -1,0 +1,59 @@
+# 反応(いいね・フォロー・RT)の候補集めと実行の設定。Claude が編集する(Museは変更しない)。
+# 流れ: 夜間に候補を集める(collectors/engage.py) → 朝のClaudeが選んで承認ページに出す → 本人が承認
+#       → 承認反映タスクが Muse への作業指示を作る → Muse が actions/engage_run.py で実行(上限と間隔を守る)
+#
+# プロファイルの場所: 各アカウントの CDP ポートと起動タスクは tools/engage_probe.py の結果
+# (state/engage_profiles.json)から、handle で自動的に引く。ここに cdp_port / launch_task / user_data_dir を書けばそちらが優先。
+
+# 1アカウント1日あたりの実行上限(本人の回答が無かったため控えめで開始。2026-11-19)
+caps:
+  x:         {follow: 10, like: 30, retweet: 5}
+  instagram: {follow: 8,  like: 25}
+
+pacing:
+  min_gap_s: 45          # 同じアカウントで次の操作までの最短間隔
+  max_gap_s: 120         # 最長間隔(この間でランダム)
+  run_times: ["12:00", "15:00", "18:00", "21:00"]   # Museが Ops-EngageRun を起動する時刻。1回にできるのは残り上限÷残り回数まで
+  stop_hours_on_block: 48  # 制限・確認画面が出たら、そのアカウントを止める時間
+
+collect:
+  max_candidates_per_account: 60   # 朝のClaudeに渡す候補の最大数(トークン節約)
+  max_post_age_days: 3              # これより古い投稿は候補にしない
+
+accounts:
+  - id: sudomix
+    platform: x
+    handle: sudomix
+    enabled: true
+    persona: >-
+      MIX師「数度」(@sudomix)。歌ってみたのボーカルMIXを受ける(フル4,500円/ショート2,000円)。
+      狙い: MIXを頼みそうな歌い手(特にMIX師を決めていない新人・中堅)とつながり、作品を見てもらう。
+      同業のMIX師の宣伝や、相互フォロー目当ての垢には反応しない。
+    sources:
+      notifications: true
+      keywords: ["#歌ってみた", "歌ってみた 投稿しました", "#歌い手さんと繋がりたい", "#新人歌い手"]
+      seeds: []            # 例: 雰囲気の近い歌い手・MIX師のハンドル(@なし)。フォロワーと最近の投稿を見る
+      home: true
+  - id: docevox
+    platform: x
+    handle: docevox
+    enabled: true
+    persona: >-
+      歌い手・配信者「Doce」(@docevox)。歌ってみた・配信・ショートを投稿。
+      狙い: 同じジャンルの歌い手仲間や、歌ってみたを聴く人とつながる。ファンアートや感想をくれた人にはお返しする。
+      宣伝だけの垢、相互目当て、成人向け・炎上中の話題には反応しない。
+    sources:
+      notifications: true
+      keywords: ["#歌ってみた", "#歌い手", "#歌い手さんと繋がりたい"]
+      seeds: []
+      home: true
+  # Instagram のキャラクターアカウント4つ。handle と狙い(persona)・探す語は本人に確認してから埋める
+  - {id: ig1, platform: instagram, handle: "", enabled: false, persona: "", sources: {notifications: true, keywords: [], seeds: [], home: true}}
+  - {id: ig2, platform: instagram, handle: "", enabled: false, persona: "", sources: {notifications: true, keywords: [], seeds: [], home: true}}
+  - {id: ig3, platform: instagram, handle: "", enabled: false, persona: "", sources: {notifications: true, keywords: [], seeds: [], home: true}}
+  - {id: ig4, platform: instagram, handle: "", enabled: false, persona: "", sources: {notifications: true, keywords: [], seeds: [], home: true}}
+
+# 1回の夜間収集で読むページ数の上限(アカウントごと)
+limits:
+  x:         {keywords: 4, seeds: 2, scrolls: 2}
+  instagram: {keywords: 3, seeds: 2, posts_per_keyword: 6, scrolls: 2}
