@@ -239,8 +239,9 @@ _BLOCK = {
         ("challenge", r"Verify your identity|本人確認|Are you a robot|ロボットではありません|unusual activity|不審なアクティビティ"),
     ],
     "instagram": [
+        # 「この投稿へのコメントは制限されています」等で誤検知しないよう、操作制限そのものの文言だけにする
         ("rate_limited", r"Try Again Later|後でもう一度実行してください|We restrict certain activity|特定のアクティビティを制限|"
-                         r"Action Blocked|アクションがブロック|しばらくしてから|制限されています"),
+                         r"Action Blocked|アクションがブロック|しばらくしてからもう一度"),
         ("locked", r"Your account has been (disabled|suspended)|アカウントは停止|アカウントが利用停止"),
         ("challenge", r"Confirm it's you|ご本人確認|本人確認|suspicious (login|activity)|不審なログイン|Help us confirm"),
     ],

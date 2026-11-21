@@ -259,10 +259,11 @@ IG_DIALOG_USERS_JS = r"""
       .filter(h => /^\/[A-Za-z0-9._]+\/$/.test(h)).map(h => h.replaceAll('/', '')));
     return hs.size <= 1 && (hs.size === 0 || hs.has(u));
   };
-  const d = document.querySelector('[role="dialog"]');
-  if (!d) return [];
+  // ダイアログがあればその中、無ければページ本体(liked_by を直接開くと一覧が普通のページで出る)
+  const d = document.querySelector('[role="dialog"]') || document.querySelector('main') || document.body;
   const seen = new Set(); const out = [];
   d.querySelectorAll('a[href]').forEach(a => {
+    if (a.closest('nav')) return;
     const h = a.getAttribute('href');
     if (!/^\/[A-Za-z0-9._]+\/$/.test(h)) return;
     const u = h.replaceAll('/', '');
@@ -278,7 +279,8 @@ IG_DIALOG_USERS_JS = r"""
 
 IG_SCROLL_DIALOG_JS = r"""
 () => {
-  const d = document.querySelector('[role="dialog"]'); if (!d) return false;
+  const d = document.querySelector('[role="dialog"]');
+  if (!d) { window.scrollBy(0, 2500); return true; }
   const els = Array.from(d.querySelectorAll('div')).filter(e => e.scrollHeight > e.clientHeight + 20);
   const el = els.sort((a, b) => b.scrollHeight - a.scrollHeight)[0]; if (!el) return false;
   el.scrollTop = el.scrollHeight; return true;
@@ -384,13 +386,14 @@ def ig_likers(page, code: str, scrolls: int, notes: list, tag: str) -> list[dict
             opened = True
         except Exception:
             opened = False
-    if not opened:  # 一覧のリンクが無い投稿は、直接のURLを試す
+    if not opened:  # 一覧のリンクが無い投稿は、直接のURLを開く(一覧が普通のページとして出る)
         page.goto(f"https://www.instagram.com/p/{code}/liked_by/", wait_until="domcontentloaded")
         time.sleep(4)
-        try:
-            page.wait_for_selector('[role="dialog"]', timeout=8000)
-            opened = True
-        except Exception:
+        b = detect_block(page, "instagram")
+        if b:
+            snapshot(page, f"{tag}_{b}")
+            raise _Blocked(b)
+        if "/liked_by" not in page.url or not page.evaluate(IG_DIALOG_USERS_JS):
             snapshot(page, f"engage_{tag}_{code}_nolikers")
             return []
     time.sleep(2)
@@ -402,7 +405,8 @@ def ig_likers(page, code: str, scrolls: int, notes: list, tag: str) -> list[dict
         time.sleep(1.8)
     for r in page.evaluate(IG_DIALOG_USERS_JS):
         users.setdefault(r["handle"], r)
-    page.keyboard.press("Escape")
+    if page.locator('[role="dialog"]').count():
+        page.keyboard.press("Escape")
     return list(users.values())
 
 
