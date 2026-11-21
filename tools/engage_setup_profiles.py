@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib.common import OPS, now, read_json, write_json  # noqa: E402
+from lib.common import OPS, now, read_json, result_dir_for, write_json  # noqa: E402
 from lib.engage_common import (ACCOUNTS_AUTO, PROFILE_MAP, _kill_profile_chrome, cdp_alive,  # noqa: E402
                                current_handle, load_config, new_tab)
 
@@ -199,7 +199,7 @@ def main() -> None:
     if a.job:
         job = json.loads(Path(a.job).read_text(encoding="utf-8"))
         allok = all(v["verified"] for v in auto.values()) and not notes
-        write_json(OPS / "mailbox" / "to_claude" / f"{job['id']}.result.json", {
+        write_json(result_dir_for(a.job, "sns") / f"{job['id']}.result.json", {
             "id": job["id"], "status": "done" if allok else ("failed" if not any(v["verified"] for v in auto.values()) else "done"),
             "finished_at": now().isoformat(timespec="seconds"), "what_i_did": did or ["確認だけ行った"],
             "evidence": {"accounts": summary, "file": str(ACCOUNTS_AUTO)},

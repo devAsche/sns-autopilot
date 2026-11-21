@@ -5,13 +5,22 @@
 
 ```
 mailbox/
-  to_muse/     Claude → Muse の作業指示(1作業1ファイル)
-  to_claude/   Muse → Claude の結果報告と質問
-  done/        Muse が終えた作業指示を移す場所
-  consult/     Muse ⇔ Claude の相談スレッド(1相談1フォルダ。決まりは consult/README.md)
+  post/      投稿(post_tiktok・post_instagram)と投稿の数字(collect_post_stats)
+  bgm/       BGMの在庫集め(collect_bgm)
+  sns/       いいね・フォロー・RT の仕組み(engage_*、その試運転、制限の知らせ engage-alert-*)
+  system/    それ以外(PCの起動・休眠、夜間収集のやり直し、コマンド実行、ファイルのコピー、Muse の質問 q-* と Claude の回答 a-*)
+    └ どの用途も中は同じ3つ:
+      to_muse/     Claude → Muse の作業指示(1作業1ファイル)
+      to_claude/   Muse → Claude の結果報告
+      done/        Muse が終えた作業指示を移す場所
+  consult/   Muse ⇔ Claude の相談スレッド(1相談1フォルダ。決まりは consult/README.md)
 ```
 
-## 1. 作業指示(Claude が書く) `to_muse/<id>.json`
+- **作業指示を置いた用途のフォルダで、結果も返す。** 例: `mailbox/sns/to_muse/x.json` の結果は `mailbox/sns/to_claude/x.result.json`、終えた指示は `mailbox/sns/done/` へ。
+- Muse は確認時刻に **4つの用途すべての `to_muse/`** を見る。
+- 2026-11-21 に用途別に分けた。古い `mailbox/to_muse/`・`to_claude/`・`done/` は使わない(中に MOVED.txt がある)。
+
+## 1. 作業指示(Claude が書く) `<用途>/to_muse/<id>.json`
 
 ```json
 {
@@ -50,7 +59,7 @@ mailbox/
 | `engage_probe` | `tools/engage_probe.py --launch --job <指示ファイル>` を実行し、アカウント別Chromeプロファイルのポートとログイン中のアカウントを調べる(読むだけ) | なし |
 | `engage_profile_setup` | 各アカウントがどの Chrome プロファイルかを `state/engage_profile_map.json` に書き(この作業指示のときだけ書いてよい)、`tools/engage_setup_profiles.py --job <指示ファイル>` を実行する(手順は MUSE_RUNBOOK.md の「反応の実行」) | なし |
 
-## 2. 結果報告(Muse が書く) `to_claude/<id>.result.json`
+## 2. 結果報告(Muse が書く) `<用途>/to_claude/<id>.result.json`(作業指示と同じ用途)
 
 ```json
 {
@@ -68,21 +77,21 @@ mailbox/
 - `status` は `done`(全部できた)/ `failed`(やろうとして失敗)/ `blocked`(指示どおりにできないので手を付けなかった)のどれか。
 - `done` には必ず証拠(投稿URLかスクリーンショットのパス)を付ける。証拠がなければ `done` にしない。
 - エラーは要約せず、表示された文をそのまま `error_text` に貼る。
-- 書き終えたら、元の作業指示ファイルを `done/` に移す。
+- 書き終えたら、元の作業指示ファイルを同じ用途の `done/` に移す。
 
-## 3. 質問(Muse が書く) `to_claude/q-<YYYYMMDD-HHMM>.json`
+## 3. 質問(Muse が書く) `system/to_claude/q-<YYYYMMDD-HHMM>.json`
 
 ```json
 {"from": "muse", "question": "…", "context": "…", "blocking_job_id": "2026-11-04-post-tiktok-001"}
 ```
 
-Claude は毎朝(6:41)の定期タスクで読み、`to_muse/a-<同じ番号>.json`(type: `answer`)で答える。
+Claude は毎朝(6:41)と昼(12:13)の定期タスクで読み、`system/to_muse/a-<同じ番号>.json`(type: `answer`)で答える。
 急ぎでなければ質問は翌朝に答えが届く。答えを待つ間、その作業は実行しない。
 
 ## 4. 確認の時刻
 
-`config/schedule.yaml` の `muse_checks` の時刻に Muse が `to_muse/` を見る。
-Claude は毎朝の定期タスクで `to_claude/` を読み、必要な指示を `to_muse/` に置く。
+`config/schedule.yaml` の `muse_checks` の時刻に Muse が `mailbox/*/to_muse/`(post・bgm・sns・system)を見る。
+Claude は定期タスクで各用途の `to_claude/` を読み、必要な指示をその用途の `to_muse/` に置く。
 
 ## 5. 相談(Muse ⇔ Claude のスレッド) `consult/<YYYYMMDD>-<題名>/`
 

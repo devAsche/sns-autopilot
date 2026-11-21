@@ -76,7 +76,8 @@ def build_digest(results: dict) -> dict:
             "competitor_outliers": doce.get("items", [])[:12],
             "genre_trends_this_week": doce.get("trends", [])[:15],
         },
-        "mailbox_to_claude": sorted(p.name for p in (OPS / "mailbox" / "to_claude").glob("*.json")),
+        "mailbox_to_claude": {c: sorted(p.name for p in (OPS / "mailbox" / c / "to_claude").glob("*.json"))
+                              for c in ("post", "bgm", "sns", "system")},
     }
     return digest
 

@@ -268,3 +268,13 @@ def safe_run(name: str, fn, *args, **kwargs) -> dict:
     write_json(DATA_DIR / f"{name}.json", r)
     log(f"end {name}: {r['status']} items={len(r.get('items', []))} ({r['seconds']}s)")
     return r
+
+
+def result_dir_for(job_path, category: str = "system"):
+    """作業指示ファイルの場所から、結果を書くフォルダを決める(mailbox/<用途>/to_muse/x.json → mailbox/<用途>/to_claude/)。
+    to_muse の外にある場合は mailbox/<category>/to_claude/。"""
+    from pathlib import Path as _P
+    p = _P(job_path).resolve() if job_path else None
+    d = p.parent.parent / "to_claude" if p and p.parent.name in ("to_muse", "done") else OPS / "mailbox" / category / "to_claude"
+    d.mkdir(parents=True, exist_ok=True)
+    return d

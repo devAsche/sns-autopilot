@@ -8,7 +8,7 @@
 使い方(Museが実行):
   python tools/engage_probe.py            … 調べて結果を表示し、state/engage_profiles.json に保存
   python tools/engage_probe.py --launch   … 応答しないプロファイルを、見つかった起動タスクで起こしてから調べる
-  python tools/engage_probe.py --job <作業指示ファイル>  … 結果を mailbox/to_claude/<id>.result.json にも書く
+  python tools/engage_probe.py --job <作業指示ファイル>  … 結果を作業指示と同じ用途の mailbox/<用途>/to_claude/<id>.result.json にも書く
 
 このファイルは Claude が保守する。Muse は編集しない。何かを投稿・いいね・フォローすることはない(読むだけ)。
 """
@@ -23,7 +23,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib.common import OPS, now, write_json  # noqa: E402
+from lib.common import OPS, now, result_dir_for, write_json  # noqa: E402
 from lib.engage_common import PROFILES_STATE, cdp_alive, current_handle, new_tab  # noqa: E402
 
 PORT_RE = re.compile(r"--remote-debugging-port[= ](\d+)")
@@ -114,7 +114,7 @@ def main() -> None:
     if a.job:
         job = json.loads(Path(a.job).read_text(encoding="utf-8"))
         found = [p for p in ports.values() if p.get("x_handle") or p.get("ig_handle")]
-        write_json(OPS / "mailbox" / "to_claude" / f"{job['id']}.result.json", {
+        write_json(result_dir_for(a.job, "sns") / f"{job['id']}.result.json", {
             "id": job["id"], "status": "done" if found else "failed",
             "finished_at": now().isoformat(timespec="seconds"),
             "what_i_did": ["tools/engage_probe.py を実行した"],

@@ -12,7 +12,7 @@
   - 承認済み(approved_by_user: true)の作業指示から入った操作しか実行しない
   - ログイン中のアカウントが設定と違えば、そのアカウントは何もしない
   - 1日の上限(config/engage.yaml の caps)と、同じアカウントでの間隔(pacing)を守る。上限を超えた分は翌日に回る
-  - 制限・確認画面・ログアウトを見つけたら、そのアカウントを stop_hours_on_block 時間止め、mailbox/to_claude に知らせる
+  - 制限・確認画面・ログアウトを見つけたら、そのアカウントを stop_hours_on_block 時間止め、mailbox/sns/to_claude に知らせる
   - 結果のわからない操作は、念のため回数に数え、同じ相手には二度試さない
 
 このファイルは Claude が保守する。Muse は編集しない。
@@ -31,13 +31,13 @@ import traceback
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from lib.common import OPS, keep_awake, now, read_json, today, write_json  # noqa: E402
+from lib.common import OPS, keep_awake, now, read_json, result_dir_for, today, write_json  # noqa: E402
 from lib.engage_common import (ACTIONS, LOG_DIR, QUEUE_STATE, account_by_id, add_count, cap_for,  # noqa: E402
                                connect_account, current_handle, detect_block, history_key, load_engage_config,
                                load_history, log_event, new_tab, pause, paused_until, record_history, release,
                                used, write_status)
 
-TO_CLAUDE = OPS / "mailbox" / "to_claude"
+TO_CLAUDE = OPS / "mailbox" / "sns" / "to_claude"  # 制限の知らせなど、作業指示に結びつかない連絡の置き場
 SHOTS = LOG_DIR / "shots"
 NOT_FOUND = re.compile(r"このアカウントは存在しません|This account doesn.t exist|Account suspended|アカウントは凍結|"
                        r"このページはご利用いただけません|Sorry, this page isn.t available|このポストは削除|"
@@ -311,7 +311,7 @@ def enqueue(job_path: str) -> None:
                    evidence={"queue_file": str(QUEUE_STATE)}, not_done=bad,
                    notes="実行は Ops-EngageRun(engage_run.py --drain)が上限と間隔を守って行う")
     res["finished_at"] = now().isoformat(timespec="seconds")
-    write_json(TO_CLAUDE / f"{res['id']}.result.json", res)
+    write_json(result_dir_for(job_path, "sns") / f"{res['id']}.result.json", res)
     print(json.dumps(res, ensure_ascii=False, indent=1))
 
 
@@ -447,6 +447,7 @@ def drain(dry: bool, max_minutes: int) -> dict:
                     summary["accounts"][acct_id].update(status=f"blocked:{detail}")
                     summary["accounts"][acct_id]["notes"].append(f"{detail} を検知。{until} まで止める")
                     if not dry:
+                        TO_CLAUDE.mkdir(parents=True, exist_ok=True)
                         write_json(TO_CLAUDE / f"engage-alert-{today()}-{acct_id}.json", {
                             "from": "engage_run", "account": acct_id, "reason": detail, "paused_until": until,
                             "screenshot": evidence, "at": now().isoformat(timespec="minutes")})
