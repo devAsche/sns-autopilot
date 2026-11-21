@@ -172,12 +172,33 @@ def collect_x(page, acct: dict, cfg: dict, notes: list) -> list[dict]:
             _goto(page, f"https://x.com/search?q={quote(q + ' -filter:nativeretweets')}&src=typed_query&f=live", "x", notes, f"{tag}_kw")
             page.wait_for_selector('article[data-testid="tweet"]', timeout=15000)
             _scroll(page, lim.get("scrolls", 2))
-            out += [p for p in (_x_post(t, "keyword", q) for t in page.evaluate(X_TWEETS_JS)) if p]
+            posts = [p for p in (_x_post(t, "keyword", q) for t in page.evaluate(X_TWEETS_JS)) if p]
+            out += posts
+            # 投稿した人もフォロー候補にする(本文を判断材料として付ける)
+            for p in posts:
+                u = _x_user(p["handle"], "keyword", f"「{q}」で投稿していた人", p.get("text", ""))
+                if u:
+                    out.append(u)
         except _Blocked:
             raise
         except Exception as e:
             notes.append(f"{tag} 検索「{q}」: {type(e).__name__}: {str(e)[:120]}")
             snapshot(page, f"engage_{tag}_kw_err")
+        if lim.get("people_search", True):
+            # 同じキーワードの「アカウント」検索。プロフィール文が読めるので、人の候補としての質が高い
+            try:
+                _goto(page, f"https://x.com/search?q={quote(q)}&src=typed_query&f=user", "x", notes, f"{tag}_kwu")
+                page.wait_for_selector('[data-testid="UserCell"]', timeout=15000)
+                _scroll(page, lim.get("scrolls", 2))
+                for c in page.evaluate(X_USERCELL_JS):
+                    u = _x_user(c["handle"], "keyword", f"「{q}」のアカウント検索", c["text"], c["following"], c["follows_you"])
+                    if u:
+                        out.append(u)
+            except _Blocked:
+                raise
+            except Exception as e:
+                notes.append(f"{tag} アカウント検索「{q}」: {type(e).__name__}: {str(e)[:120]}")
+                snapshot(page, f"engage_{tag}_kwu_err")
     for seed in (src.get("seeds") or [])[: lim.get("seeds", 2)]:
         seed = seed.lstrip("@")
         try:
@@ -201,7 +222,12 @@ def collect_x(page, acct: dict, cfg: dict, notes: list) -> list[dict]:
             _goto(page, "https://x.com/home", "x", notes, f"{tag}_home")
             page.wait_for_selector('article[data-testid="tweet"]', timeout=15000)
             _scroll(page, lim.get("scrolls", 2))
-            out += [p for p in (_x_post(t, "home", "ホームのおすすめ") for t in page.evaluate(X_TWEETS_JS)) if p]
+            posts = [p for p in (_x_post(t, "home", "ホームのおすすめ") for t in page.evaluate(X_TWEETS_JS)) if p]
+            out += posts
+            for p in posts:
+                u = _x_user(p["handle"], "home", "ホームのおすすめに出てきた投稿の人", p.get("text", ""))
+                if u:
+                    out.append(u)
         except _Blocked:
             raise
         except Exception as e:
