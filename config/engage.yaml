@@ -47,20 +47,55 @@ accounts:
       keywords: ["#動画師", "#MV制作", "#AI動画", "動画師 募集"]
       seeds: []
       home: true
-  # Instagram のキャラクターアカウント4つ(架空の成人女性AIキャラ)。handle は Muse の報告から
-  # tools/engage_setup_profiles.py が state/engage_accounts_auto.json に入れる(ここが空なら自動の値を使う)
-  - id: ig1
+  # Instagram のキャラクターアカウント4つ(架空の成人女性AIキャラ)。反応の仕組み専用の Chrome プロファイルを使う
+  # (2026-11-21 本人の指示で新設。作成は tools/engage_make_profiles.py、ログインは本人)
+  - id: ig1   # れな
     platform: instagram
-    handle: ""
+    handle: "rena.tokyo.days"
     enabled: true
+    create_profile: true
+    user_data_dir: "C:\\Users\\user\\Chrome-IG-rena"
+    profile_mark: "C:\\Users\\user\\Chrome-IG-rena"
+    cdp_port: 9233
+    launch_task: Ops-Chrome-ig1
     persona: &ig_persona >-
       架空の成人女性AIキャラクターのアカウント。
       狙い(本人の言葉): 自分のアカウントに興味がありそうな男性や、精力的に活動している男性層。反応してくれた人へのお返しを優先。
       必ず除く: 未成年と思われる相手、業者・スパム・フォロワー販売、成人向けの勧誘、他のAIキャラ業者の宣伝、政治や炎上の話題。
     sources: &ig_sources {notifications: true, keywords: [], seeds: [], home: true}
-  - {id: ig2, platform: instagram, handle: "", enabled: true, persona: *ig_persona, sources: *ig_sources}
-  - {id: ig3, platform: instagram, handle: "", enabled: true, persona: *ig_persona, sources: *ig_sources}
-  - {id: ig4, platform: instagram, handle: "", enabled: true, persona: *ig_persona, sources: *ig_sources}
+  - id: ig2   # ゆあ
+    platform: instagram
+    handle: "yua._314"
+    enabled: true
+    create_profile: true
+    user_data_dir: "C:\\Users\\user\\Chrome-IG-yua"
+    profile_mark: "C:\\Users\\user\\Chrome-IG-yua"
+    cdp_port: 9234
+    launch_task: Ops-Chrome-ig2
+    persona: *ig_persona
+    sources: *ig_sources
+  - id: ig3   # りお
+    platform: instagram
+    handle: "riori__o"
+    enabled: true
+    create_profile: true
+    user_data_dir: "C:\\Users\\user\\Chrome-IG-rio"
+    profile_mark: "C:\\Users\\user\\Chrome-IG-rio"
+    cdp_port: 9235
+    launch_task: Ops-Chrome-ig3
+    persona: *ig_persona
+    sources: *ig_sources
+  - id: ig4   # のあ
+    platform: instagram
+    handle: "noacha_"
+    enabled: true
+    create_profile: true
+    user_data_dir: "C:\\Users\\user\\Chrome-IG-noa"
+    profile_mark: "C:\\Users\\user\\Chrome-IG-noa"
+    cdp_port: 9236
+    launch_task: Ops-Chrome-ig4
+    persona: *ig_persona
+    sources: *ig_sources
 
 # 1回の夜間収集で読むページ数の上限(アカウントごと)
 limits:
