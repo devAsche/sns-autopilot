@@ -567,7 +567,7 @@ def finalize(acct: dict, cands: list[dict], cfg: dict, history: dict, following:
     """重複をまとめ、実行済み・自分・古すぎる・反応済みを除き、出所の重みで並べて上限件数に絞る。"""
     max_age_h = cfg.get("collect", {}).get("max_post_age_days", 3) * 24
     own = acct["handle"].lower()
-    done_targets = {k.split("|", 2)[2] for k in history if k.startswith(acct["id"] + "|")}
+    done_targets = {k.split("|", 2)[2] for k, v in history.items() if k.startswith(acct["id"] + "|") and v.get("result") != "unsupported"}
     merged: dict[str, dict] = {}
     for c in cands:
         if not c or not c.get("cid"):

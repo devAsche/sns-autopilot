@@ -228,8 +228,37 @@ def x_follow(page, url: str, dry: bool) -> str:
 
 IG_LIKE_LABELS = ["いいね！", "Like"]
 IG_UNLIKE_LABELS = ["「いいね！」を取り消す", "Unlike"]
-IG_FOLLOW = re.compile(r"^(フォローする|Follow|フォローバックする|Follow Back)$")
+IG_FOLLOW = re.compile(r"^(フォローする|フォロー|Follow|フォローバックする|フォローバック|Follow Back)$")
 IG_FOLLOWING = re.compile(r"^(フォロー中|Following|リクエスト済み|Requested)$")
+
+# プロフィール上部(名前の下まで)にあるフォローボタンだけを探す。下の「おすすめ」欄のボタンは対象外。
+IG_MARK_FOLLOW_JS = r"""
+([followRe, followingRe]) => {
+  const fRe = new RegExp(followRe), gRe = new RegExp(followingRe);
+  const header = document.querySelector('header');
+  const scope = document.querySelector('main') || document.body;
+  if (!header) return {state: 'missing', texts: []};
+  const limit = header.getBoundingClientRect().bottom + 160;
+  let stopAt = Infinity;
+  for (const h of scope.querySelectorAll('h2, h3, span, div')) {
+    const t = (h.childElementCount === 0 ? h.textContent : '').trim();
+    if (t === 'おすすめ' || t === 'Suggested for you' || t === 'Suggested') {
+      stopAt = Math.min(stopAt, h.getBoundingClientRect().top);
+    }
+  }
+  const btns = Array.from(scope.querySelectorAll('button, [role="button"]')).filter(b => {
+    const r = b.getBoundingClientRect();
+    return r.height > 0 && r.top < limit && r.top < stopAt;
+  }).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+  const texts = btns.map(b => (b.innerText || '').trim()).filter(t => t && t.length < 30);
+  document.querySelectorAll('[data-engage-target]').forEach(e => e.removeAttribute('data-engage-target'));
+  if (btns.some(b => gRe.test((b.innerText || '').trim()))) return {state: 'already', texts};
+  const b = btns.find(b => fRe.test((b.innerText || '').trim()));
+  if (!b) return {state: 'missing', texts};
+  b.setAttribute('data-engage-target', '1');
+  return {state: 'ok', texts};
+}
+"""
 
 IG_MARK_LIKE_JS = r"""
 ([likes, unlikes]) => {
@@ -287,21 +316,19 @@ def ig_follow(page, url: str, dry: bool) -> str:
     header = page.locator("header").first
     if not header.count() or handle.lower() not in header.inner_text().lower():
         raise Outcome("mismatch", f"開いたプロフィールが {handle} ではない(または表示されない)")
-    buttons = header.locator('button, div[role="button"]')
-    texts = [t.strip() for t in buttons.all_inner_texts()]
-    if any(IG_FOLLOWING.match(t) for t in texts):
+    st = page.evaluate(IG_MARK_FOLLOW_JS, [IG_FOLLOW.pattern, IG_FOLLOWING.pattern])
+    if st.get("state") == "already":
         return "already"
-    idx = next((i for i, t in enumerate(texts) if IG_FOLLOW.match(t)), None)
-    if idx is None:
-        raise Outcome("unsupported", "フォローボタンが見つからない")
+    if st.get("state") != "ok":
+        raise Outcome("unsupported", "フォローボタンが見つからない(上部のボタン: " + " / ".join(st.get("texts", [])[:8]) + ")")
     if dry:
         return "dry_run"
     human_dwell(page)
-    human_click(buttons.nth(idx))
+    human_click(page.locator('[data-engage-target="1"]').first)
     deadline = time.time() + 10
     while time.time() < deadline:
         time.sleep(1)
-        if any(IG_FOLLOWING.match(t.strip()) for t in header.locator('button, div[role="button"]').all_inner_texts()):
+        if page.evaluate(IG_MARK_FOLLOW_JS, [IG_FOLLOW.pattern, IG_FOLLOWING.pattern]).get("state") == "already":
             time.sleep(1)
             _check(page, "instagram")
             return "done"
@@ -458,7 +485,8 @@ def drain(dry: bool, max_minutes: int) -> dict:
                 plan[acct_id].remove(item)
                 acct, page = s["acct"], s["page"]
                 key = history_key(acct_id, item["action"], item["url"])
-                if key in history and not dry:
+                # unsupported(ボタンが見つからない等、こちらの道具側の失敗)は済んだ扱いにせず、やり直せるようにする
+                if key in history and history[key].get("result") != "unsupported" and not dry:
                     kind, detail = "already", "実行済みの記録あり"
                 else:
                     try:
