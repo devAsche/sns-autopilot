@@ -497,6 +497,11 @@ def drain(dry: bool, max_minutes: int) -> dict:
                 key = history_key(acct_id, item["action"], item["url"])
                 # unsupported(ボタンが見つからない等、こちらの道具側の失敗)は済んだ扱いにせず、やり直せるようにする
                 # retry: true は、道具側の不具合で失敗した分を本人承認のうえ入れ直したもの。実行済みの記録より優先する
+                if not dry and used(acct_id, item["action"]) >= cap_for(cfg, acct, item["action"]):
+                    # 念のため、押す直前にも記録上の今日の実行数で上限を確かめる(待ち行列には残す)
+                    allowance[acct_id][item["action"]] = 0
+                    plan[acct_id].append(item)
+                    continue
                 if key in history and history[key].get("result") != "unsupported" and not item.get("retry") and not dry:
                     kind, detail = "already", "実行済みの記録あり"
                 else:
@@ -559,6 +564,36 @@ def drain(dry: bool, max_minutes: int) -> dict:
     return summary
 
 
+# ---------- 同時実行の防止 ----------
+# 2つの --drain が同時に走ると、それぞれが「今日の残り」を数えて上限を超えてしまう(2026-11-22 に起きた)。
+# ロックファイルで1つだけにする。古いロック(max_minutes + 15分より前)は持ち主が落ちたものとみなして取り直す。
+LOCK_FILE = OPS / "state" / "engage_run.lock"
+
+
+def acquire_lock(max_minutes: int) -> bool:
+    import os
+    for _ in range(2):
+        try:
+            fd = os.open(str(LOCK_FILE), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(fd, json.dumps({"pid": os.getpid(), "at": now().isoformat(timespec="seconds")}).encode())
+            os.close(fd)
+            return True
+        except FileExistsError:
+            try:
+                age = time.time() - LOCK_FILE.stat().st_mtime
+            except FileNotFoundError:
+                continue
+            if age > (max_minutes + 15) * 60:
+                LOCK_FILE.unlink(missing_ok=True)
+                continue
+            return False
+    return False
+
+
+def release_lock() -> None:
+    LOCK_FILE.unlink(missing_ok=True)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--enqueue")
@@ -569,6 +604,10 @@ def main() -> None:
     if a.enqueue:
         enqueue(a.enqueue)
     if a.drain:
+        if not acquire_lock(a.max_minutes):
+            print(json.dumps({"skipped": "別の engage_run.py --drain が実行中なので、今回は何もしない",
+                              "lock": str(LOCK_FILE)}, ensure_ascii=False, indent=1))
+            return
         keep_awake(True)
         try:
             s = drain(a.dry_run, a.max_minutes)
@@ -577,6 +616,7 @@ def main() -> None:
             write_status(load_engage_config(), {"last_run": s})
         finally:
             keep_awake(False)
+            release_lock()
         print(json.dumps(s, ensure_ascii=False, indent=1))
 
 
