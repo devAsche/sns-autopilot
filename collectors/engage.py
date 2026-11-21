@@ -523,8 +523,12 @@ def fetch_following(page, acct: dict, cfg: dict, notes: list) -> set[str]:
                 time.sleep(1.5)
         else:
             _goto(page, f"https://www.instagram.com/{h}/", "instagram", notes, f"{tag}_following")
-            link = page.locator(f'a[href="/{h}/following/"]').first
-            link.click()
+            link = page.locator(f'a[href="/{h}/following/"]')
+            if not link.count():
+                # フォロー中が0人だと「フォロー中」がリンクにならない
+                notes.append(f"{tag} フォロー一覧のリンクが無い(フォロー中0人とみなす)")
+                return set()
+            link.first.click()
             page.wait_for_selector('[role="dialog"]', timeout=15000)
             time.sleep(2)
             still = 0

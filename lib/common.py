@@ -69,7 +69,7 @@ def load_env() -> dict:
 
 def read_json(path: Path, default):
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8-sig"))  # PowerShell が付ける BOM があっても読む
     except Exception:
         return default
 
