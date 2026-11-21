@@ -20,6 +20,8 @@ from pathlib import Path
 from lib.common import OPS, STATE_DIR, load_config, now, read_json, today, write_json
 
 PROFILES_STATE = STATE_DIR / "engage_profiles.json"   # tools/engage_probe.py が書く
+PROFILE_MAP = STATE_DIR / "engage_profile_map.json"    # Muse が書く(どのアカウントがどのChromeプロファイルか)
+ACCOUNTS_AUTO = STATE_DIR / "engage_accounts_auto.json"  # tools/engage_setup_profiles.py が書く(ポート・起動タスク・ハンドル)
 COUNTS_STATE = STATE_DIR / "engage_counts.json"       # 1日の実行回数
 PAUSED_STATE = STATE_DIR / "engage_paused.json"       # 制限などで止めたアカウント
 HISTORY_STATE = STATE_DIR / "engage_history.json"     # 実行済み(同じ相手に二度しない)
@@ -40,6 +42,21 @@ def load_engage_config() -> dict:
     cfg.setdefault("accounts", [])
     cfg.setdefault("caps", {})
     cfg.setdefault("pacing", {})
+    # tools/engage_setup_profiles.py が確かめた接続先とハンドルを足す(config に書いてある値が優先)
+    auto = read_json(ACCOUNTS_AUTO, {})
+    for a in cfg["accounts"]:
+        got = auto.get(a.get("id"), {})
+        if not got.get("verified"):
+            continue
+        if not a.get("handle"):
+            a["handle"] = got.get("handle")
+        if (a.get("handle") or "").lower() != (got.get("handle") or "").lower():
+            continue
+        for k in ("cdp_port", "launch_task", "user_data_dir"):
+            if not a.get(k) and got.get(k):
+                a[k] = got[k]
+        if got.get("user_data_dir"):
+            a.setdefault("profile_mark", got["user_data_dir"])  # 接続が詰まったとき、このChromeだけを再起動するため
     return cfg
 
 

@@ -34,24 +34,33 @@ accounts:
       keywords: ["#歌ってみた", "歌ってみた 投稿しました", "#歌い手さんと繋がりたい", "#新人歌い手"]
       seeds: []            # 例: 雰囲気の近い歌い手・MIX師のハンドル(@なし)。フォロワーと最近の投稿を見る
       home: true
-  - id: docevox
+  - id: ashley
     platform: x
-    handle: docevox
+    handle: Ashley_motion0
     enabled: true
     persona: >-
-      歌い手・配信者「Doce」(@docevox)。歌ってみた・配信・ショートを投稿。
-      狙い: 同じジャンルの歌い手仲間や、歌ってみたを聴く人とつながる。ファンアートや感想をくれた人にはお返しする。
-      宣伝だけの垢、相互目当て、成人向け・炎上中の話題には反応しない。
+      AIを使う動画師「Ashley」(@Ashley_motion0、2026年11月開始)。MV・ショート・配信用などの動画制作を受ける。
+      狙い: 動画を外注しそうな歌い手・VTuber・配信者・個人クリエイターや、AI動画を作っている仲間とつながり、作品を見てもらう。
+      宣伝だけの垢、相互目当て、成人向け、AI生成物への攻撃的な話題には反応しない。
     sources:
       notifications: true
-      keywords: ["#歌ってみた", "#歌い手", "#歌い手さんと繋がりたい"]
+      keywords: ["#動画師", "#MV制作", "#AI動画", "動画師 募集"]
       seeds: []
       home: true
-  # Instagram のキャラクターアカウント4つ。handle と狙い(persona)・探す語は本人に確認してから埋める
-  - {id: ig1, platform: instagram, handle: "", enabled: false, persona: "", sources: {notifications: true, keywords: [], seeds: [], home: true}}
-  - {id: ig2, platform: instagram, handle: "", enabled: false, persona: "", sources: {notifications: true, keywords: [], seeds: [], home: true}}
-  - {id: ig3, platform: instagram, handle: "", enabled: false, persona: "", sources: {notifications: true, keywords: [], seeds: [], home: true}}
-  - {id: ig4, platform: instagram, handle: "", enabled: false, persona: "", sources: {notifications: true, keywords: [], seeds: [], home: true}}
+  # Instagram のキャラクターアカウント4つ(架空の成人女性AIキャラ)。handle は Muse の報告から
+  # tools/engage_setup_profiles.py が state/engage_accounts_auto.json に入れる(ここが空なら自動の値を使う)
+  - id: ig1
+    platform: instagram
+    handle: ""
+    enabled: true
+    persona: &ig_persona >-
+      架空の成人女性AIキャラクターのアカウント。
+      狙い(本人の言葉): 自分のアカウントに興味がありそうな男性や、精力的に活動している男性層。反応してくれた人へのお返しを優先。
+      必ず除く: 未成年と思われる相手、業者・スパム・フォロワー販売、成人向けの勧誘、他のAIキャラ業者の宣伝、政治や炎上の話題。
+    sources: &ig_sources {notifications: true, keywords: [], seeds: [], home: true}
+  - {id: ig2, platform: instagram, handle: "", enabled: true, persona: *ig_persona, sources: *ig_sources}
+  - {id: ig3, platform: instagram, handle: "", enabled: true, persona: *ig_persona, sources: *ig_sources}
+  - {id: ig4, platform: instagram, handle: "", enabled: true, persona: *ig_persona, sources: *ig_sources}
 
 # 1回の夜間収集で読むページ数の上限(アカウントごと)
 limits:

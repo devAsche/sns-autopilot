@@ -78,6 +78,11 @@ X_NOTIF_JS = r"""
 """
 
 
+X_REACTION_RE = re.compile(r"フォローされました|いいねしました|リポストしました|あなたのポスト|あなたの返信|返信しました|"
+                           r"followed you|liked your|reposted your|liked \d+ of your|reposted \d+ of your", re.I)
+X_FOLLOWED_RE = re.compile(r"フォローされました|followed you", re.I)
+
+
 def _num(label: str | None) -> float | None:
     return parse_count(label) if label else None
 
@@ -149,8 +154,12 @@ def collect_x(page, acct: dict, cfg: dict, notes: list) -> list[dict]:
                         if u:
                             out.append(u)
                 else:
+                    # 「おすすめ」「トレンド」などの通知は自分への反応ではないので捨てる
+                    if not X_REACTION_RE.search(n["text"]):
+                        continue
+                    followed = bool(X_FOLLOWED_RE.search(n["text"]))
                     for h in n["handles"]:
-                        u = _x_user(h, "notif", trim(n["text"], 120))
+                        u = _x_user(h, "notif", trim(n["text"], 120), follows_you=True if followed else None)
                         if u:
                             out.append(u)
         except _Blocked:
@@ -300,6 +309,8 @@ IG_NOTIF_JS = r"""
 }
 """
 
+IG_REACTION_RE = re.compile(r"フォローしました|フォローを開始|いいね|コメントしました|メンション|タグ付け|"
+                            r"started following|liked your|commented|mentioned you|tagged you", re.I)
 LIKES_RE = re.compile(r"([\d,\.]+\s*[KkMm万千]?)\s*(?:likes|件の「?いいね|人が「?いいね)|いいね！?\s*([\d,\.]+\s*[万千]?)\s*件", re.I)
 
 
@@ -356,7 +367,8 @@ def collect_ig(page, acct: dict, cfg: dict, notes: list) -> list[dict]:
                 human_pause(3, 5)
                 rows = page.evaluate(IG_NOTIF_JS)
             for r in rows:
-                if _ig_handle_ok(r["handle"], own):
+                # 「おすすめ」のユーザーなど、自分への反応でない行は捨てる
+                if _ig_handle_ok(r["handle"], own) and IG_REACTION_RE.search(r["text"]):
                     out.append(_ig_user(r["handle"], "notif", trim(r["text"], 120)))
         except _Blocked:
             raise

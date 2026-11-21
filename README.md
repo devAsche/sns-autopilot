@@ -1,6 +1,6 @@
 # sns-autopilot
 
-X(@sudomix・@docevox)と Instagram のキャラクターアカウントで、いいね・フォロー・RT を **本人の承認を挟んで** 実行する仕組み。
+X(@sudomix・@Ashley_motion0)と Instagram のキャラクターアカウントで、いいね・フォロー・RT を **本人の承認を挟んで** 実行する仕組み。
 本番は PC の `C:\AI model\ops` に置いて動かしている(このリポジトリはその中の該当部分の記録)。
 
 ## 流れ
