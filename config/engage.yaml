@@ -62,6 +62,7 @@ accounts:
       home: true
   # Instagram のキャラクターアカウント4つ(架空の成人女性AIキャラ)。反応の仕組み専用の Chrome プロファイルを使う
   # (2026-11-21 本人の指示で新設。作成は tools/engage_make_profiles.py、ログインは本人)
+  # 参考アカウント(その投稿にいいねした人を候補にする)は Muse が state/engage_ig_seeds.json に書く。ここの seeds に書いても使われる
   - id: ig1   # れな
     platform: instagram
     handle: "rena.tokyo.days"
@@ -73,7 +74,7 @@ accounts:
     launch_task: Ops-Chrome-ig1
     persona: &ig_persona >-
       架空の成人女性AIキャラクターのアカウント。
-      狙い(本人の言葉): 自分のアカウントに興味がありそうな男性や、精力的に活動している男性層。反応してくれた人へのお返しを優先。
+      狙い(本人の言葉): 自分のアカウントに興味がありそうな男性。参考アカウントの投稿に「いいね！」している人(同じジャンルに関心がある人)を中心に、反応してくれた人へのお返しを優先。
       必ず除く: 未成年と思われる相手、業者・スパム・フォロワー販売、成人向けの勧誘、他のAIキャラ業者の宣伝、政治や炎上の話題。
     sources: &ig_sources {notifications: true, keywords: [], seeds: [], home: true}
   - id: ig2   # ゆあ
@@ -113,4 +114,4 @@ accounts:
 # 1回の夜間収集で読むページ数の上限(アカウントごと)
 limits:
   x:         {keywords: 4, seeds: 2, scrolls: 2}
-  instagram: {keywords: 3, seeds: 2, posts_per_keyword: 6, scrolls: 2}
+  instagram: {keywords: 3, seeds: 5, posts_per_seed: 2, liker_scrolls: 4, posts_per_keyword: 6, scrolls: 2}

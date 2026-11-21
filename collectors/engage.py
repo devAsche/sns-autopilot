@@ -349,6 +349,63 @@ def _ig_open_post(page, code: str, own: str, source: str, detail: str, notes: li
     return _ig_post(code, author, text, likes, info.get("liked"), info.get("created_at"), source, detail)
 
 
+def ig_seeds(acct: dict) -> list[str]:
+    """参考アカウント。config の sources.seeds と、Muse が書く state/engage_ig_seeds.json(アカウント名ごと)を合わせる。"""
+    from lib.common import STATE_DIR, read_json
+    seeds = list((acct.get("sources") or {}).get("seeds") or [])
+    m = read_json(STATE_DIR / "engage_ig_seeds.json", {}).get("accounts", {})
+    for k in (acct["id"], acct.get("handle") or ""):
+        seeds += m.get(k, []) or []
+    return list(dict.fromkeys(x.lstrip("@") for x in seeds if x))
+
+
+IG_LIKES_LINK_JS = r"""
+() => {
+  const scope = document.querySelector('main') || document.body;
+  const a = Array.from(scope.querySelectorAll('a[href]')).find(a => /\/liked_by\/?$/.test(a.getAttribute('href')));
+  if (a) { a.setAttribute('data-engage-likes', '1'); return 'link'; }
+  const el = Array.from(scope.querySelectorAll('a, span, div[role="button"], button')).find(e =>
+    /^(いいね！?\s*[\d,\.万千]+\s*件|[\d,\.KkMm]+\s+likes?|他|others)$/.test((e.innerText || '').trim()));
+  if (el) { el.setAttribute('data-engage-likes', '1'); return 'text'; }
+  return null;
+}
+"""
+
+
+def ig_likers(page, code: str, scrolls: int, notes: list, tag: str) -> list[dict]:
+    """投稿の「いいね！」した人の一覧を開いて読む。"""
+    _goto(page, f"https://www.instagram.com/p/{code}/", "instagram", notes, tag)
+    how = page.evaluate(IG_LIKES_LINK_JS)
+    opened = False
+    if how:
+        try:
+            page.locator('[data-engage-likes="1"]').first.click()
+            page.wait_for_selector('[role="dialog"]', timeout=10000)
+            opened = True
+        except Exception:
+            opened = False
+    if not opened:  # 一覧のリンクが無い投稿は、直接のURLを試す
+        page.goto(f"https://www.instagram.com/p/{code}/liked_by/", wait_until="domcontentloaded")
+        time.sleep(4)
+        try:
+            page.wait_for_selector('[role="dialog"]', timeout=8000)
+            opened = True
+        except Exception:
+            snapshot(page, f"engage_{tag}_{code}_nolikers")
+            return []
+    time.sleep(2)
+    users: dict[str, dict] = {}
+    for _ in range(scrolls):
+        for r in page.evaluate(IG_DIALOG_USERS_JS):
+            users.setdefault(r["handle"], r)
+        page.evaluate(IG_SCROLL_DIALOG_JS)
+        time.sleep(1.8)
+    for r in page.evaluate(IG_DIALOG_USERS_JS):
+        users.setdefault(r["handle"], r)
+    page.keyboard.press("Escape")
+    return list(users.values())
+
+
 def collect_ig(page, acct: dict, cfg: dict, notes: list) -> list[dict]:
     lim = cfg.get("limits", {}).get("instagram", {})
     src = acct.get("sources", {})
@@ -399,32 +456,26 @@ def collect_ig(page, acct: dict, cfg: dict, notes: list) -> list[dict]:
         except Exception as e:
             notes.append(f"{tag} 「{kw}」: {type(e).__name__}: {str(e)[:120]}")
             snapshot(page, f"engage_{tag}_kw_err")
-    for seed in (src.get("seeds") or [])[: lim.get("seeds", 2)]:
+    # 指定アカウント(参考アカウント)の最近の投稿に「いいね！」した人を候補にする(2026-11-22 本人の方針)
+    for seed in ig_seeds(acct)[: lim.get("seeds", 5)]:
         seed = seed.lstrip("@")
         try:
             _goto(page, f"https://www.instagram.com/{seed}/", "instagram", notes, f"{tag}_seed")
-            codes = list(dict.fromkeys(c for c in (_ig_code(h) for h in page.evaluate(IG_POSTLINKS_JS)) if c))[:3]
-            fl = page.locator(f'a[href="/{seed}/followers/"]').first
-            if fl.count():
-                fl.click()
-                page.wait_for_selector('[role="dialog"]', timeout=15000)
-                human_pause(2, 4)
-                for _ in range(lim.get("scrolls", 2)):
-                    page.evaluate(IG_SCROLL_DIALOG_JS)
-                    human_pause(2, 3.5)
-                for r in page.evaluate(IG_DIALOG_USERS_JS):
+            codes = list(dict.fromkeys(c for c in (_ig_code(h) for h in page.evaluate(IG_POSTLINKS_JS)) if c))
+            got_any = False
+            for code in codes[: lim.get("posts_per_seed", 2)]:
+                users = ig_likers(page, code, lim.get("liker_scrolls", 4), notes, f"{tag}_likers")
+                for r in users:
                     if _ig_handle_ok(r["handle"], own) and r["handle"].lower() != seed.lower():
                         following = bool(re.search(r"^(フォロー中|Following|リクエスト済み|Requested)$", r["button"]))
-                        out.append(_ig_user(r["handle"], "seed", f"@{seed} のフォロワー", r["text"], following))
-                page.keyboard.press("Escape")
-            for code in codes:
-                p = _ig_open_post(page, code, own, "seed", f"@{seed} の投稿", notes, f"{tag}_seedpost")
-                if p:
-                    out.append(p)
+                        out.append(_ig_user(r["handle"], "seed", f"@{seed} の投稿にいいねした人", r["text"], following))
+                        got_any = True
+            if not got_any:
+                notes.append(f"{tag} 参考アカウント @{seed}: いいねした人の一覧を読めなかった")
         except _Blocked:
             raise
         except Exception as e:
-            notes.append(f"{tag} 指定アカウント @{seed}: {type(e).__name__}: {str(e)[:120]}")
+            notes.append(f"{tag} 参考アカウント @{seed}: {type(e).__name__}: {str(e)[:120]}")
             snapshot(page, f"engage_{tag}_seed_err")
     if src.get("home"):
         try:
