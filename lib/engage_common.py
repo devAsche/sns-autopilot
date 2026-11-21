@@ -200,16 +200,32 @@ def current_handle(page, platform: str) -> str | None:
         return h if HANDLE_X.match(h) else None
     page.goto("https://www.instagram.com/", wait_until="domcontentloaded")
     time.sleep(6)
-    h = page.evaluate(r"""() => {
-      const a = Array.from(document.querySelectorAll('a[href]')).find(a => {
-        const t = (a.innerText || '').trim();
-        return /^(プロフィール|Profile)$/.test(t) && /^\/[A-Za-z0-9._]+\/$/.test(a.getAttribute('href'));
-      });
-      if (a) return a.getAttribute('href').replaceAll('/', '');
-      const img = Array.from(document.querySelectorAll('img[alt]')).find(i => /のプロフィール写真|'s profile picture/.test(i.alt) && i.closest('nav, [role="navigation"]'));
-      return img ? img.alt.replace(/のプロフィール写真|'s profile picture/, '').trim() : null;
-    }""")
+    # サイドバーが折りたたまれている(ウィンドウが狭い)と「プロフィール」の文字が非表示になるので、
+    # 表示されていない文字(textContent)・左端の位置・自分の写真の alt の3通りで探す
+    h = None
+    for _ in range(3):
+        h = page.evaluate(IG_SELF_JS)
+        if h:
+            break
+        time.sleep(3)
     return h if h and HANDLE_IG.match(h) else None
+
+
+IG_SELF_JS = r"""() => {
+  const isUser = h => /^\/[A-Za-z0-9._]+\/$/.test(h || '');
+  const links = Array.from(document.querySelectorAll('a[href]')).filter(a => isUser(a.getAttribute('href')));
+  const name = a => a.getAttribute('href').replaceAll('/', '');
+  // 1. 「プロフィール」ラベル付きのリンク(非表示でも textContent には残る)
+  let a = links.find(a => /^(プロフィール|Profile)$/.test((a.textContent || '').trim()));
+  if (a) return name(a);
+  // 2. 左端(サイドバー)にある、自分の写真つきのリンク
+  a = links.find(a => { const r = a.getBoundingClientRect(); return r.width > 0 && r.left < 150 && a.querySelector('img'); });
+  if (a) return name(a);
+  // 3. 写真の alt が「<リンク先>のプロフィール写真」で、ナビゲーション内か、投稿(article)の外にあるもの
+  a = links.find(a => { const img = a.querySelector('img[alt]'); return img && !a.closest('article') &&
+        img.alt.replace(/のプロフィール写真|'s profile picture/, '').trim() === name(a); });
+  return a ? name(a) : null;
+}"""
 
 
 # ---------- 制限・確認画面の検知 ----------
